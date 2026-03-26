@@ -2,6 +2,7 @@
 
 namespace App;
 
+
 const __PROJECT_ROOT__  = __DIR__;
 
 use App\Controllers\Hotel\HotelListController;
