@@ -20,7 +20,7 @@ echo get_header( [ "title" => "Liste des hôtels" ] );
   <div class="lg:w-8/12 w-full flex flex-col">
     <header class="mx-4 py-4 text-slate-500 border-b border-slate-200">
       <h1 class="text-3xl">
-        <span class="font-bold">Pretty</span>ButSlow
+        <span class="font-bold">Pretty</span>AndNotSoSlowAnymore
       </h1>
     </header>
     
