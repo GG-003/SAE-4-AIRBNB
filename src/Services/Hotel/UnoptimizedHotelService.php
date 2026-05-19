@@ -5,305 +5,324 @@ namespace App\Services\Hotel;
 use App\Common\FilterException;
 use App\Common\SingletonTrait;
 use App\Entities\HotelEntity;
-use App\Entities\RoomEntity;
 use App\Services\Room\RoomService;
 use Exception;
 use PDO;
 
-/**
- * Une classe utilitaire pour récupérer les données des magasins stockés en base de données
- */
 class UnoptimizedHotelService extends AbstractHotelService
 {
-
   use SingletonTrait;
 
+  private ?PDO $db = null;
 
   protected function __construct()
   {
     parent::__construct(new RoomService());
   }
 
-
-  /**
-   * Récupère une nouvelle instance de connexion à la base de donnée
-   *
-   * @return PDO
-   * @noinspection PhpUnnecessaryLocalVariableInspection
-   */
   protected function getDB(): PDO
   {
-    $pdo = new PDO("mysql:host=db;dbname=tp;charset=utf8mb4", "root", "root");
-    return $pdo;
-  }
-
-
-  /**
-   * Récupère une méta-donnée de l'instance donnée
-   *
-   * @param int    $userId
-   * @param string $key
-   *
-   * @return string|null
-   */
-  protected function getMeta(int $userId, string $key): ?string
-  {
-    $db = $this->getDB();
-    $stmt = $db->prepare("SELECT * FROM wp_usermeta");
-    $stmt->execute();
-
-    $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $output = null;
-    foreach ($result as $row) {
-      if ($row['user_id'] === $userId && $row['meta_key'] === $key)
-        $output = $row['meta_value'];
+    if ($this->db === null) {
+      $this->db = new PDO(
+        "mysql:host=db;dbname=tp;charset=utf8mb4",
+        "root",
+        "root",
+        [
+          PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+          PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
+      );
     }
 
-    return $output;
+    return $this->db;
   }
 
-
-  /**
-   * Récupère toutes les meta données de l'instance donnée
-   *
-   * @param HotelEntity $hotel
-   *
-   * @return array
-   * @noinspection PhpUnnecessaryLocalVariableInspection
-   */
-  protected function getMetas(HotelEntity $hotel): array
-  {
-    $metaDatas = [
-      'address' => [
-        'address_1' => $this->getMeta($hotel->getId(), 'address_1'),
-        'address_2' => $this->getMeta($hotel->getId(), 'address_2'),
-        'address_city' => $this->getMeta($hotel->getId(), 'address_city'),
-        'address_zip' => $this->getMeta($hotel->getId(), 'address_zip'),
-        'address_country' => $this->getMeta($hotel->getId(), 'address_country'),
-      ],
-      'geo_lat' =>  $this->getMeta($hotel->getId(), 'geo_lat'),
-      'geo_lng' =>  $this->getMeta($hotel->getId(), 'geo_lng'),
-      'coverImage' =>  $this->getMeta($hotel->getId(), 'coverImage'),
-      'phone' =>  $this->getMeta($hotel->getId(), 'phone'),
-    ];
-
-    return $metaDatas;
-  }
-
-
-  /**
-   * Récupère les données liées aux évaluations des hotels (nombre d'avis et moyenne des avis)
-   *
-   * @param HotelEntity $hotel
-   *
-   * @return array{rating: int, count: int}
-   * @noinspection PhpUnnecessaryLocalVariableInspection
-   */
-  protected function getReviews(HotelEntity $hotel): array
-  {
-    // Récupère tous les avis d'un hotel
-    $stmt = $this->getDB()->prepare("SELECT * FROM wp_posts, wp_postmeta WHERE wp_posts.post_author = :hotelId AND wp_posts.ID = wp_postmeta.post_id AND meta_key = 'rating' AND post_type = 'review'");
-    $stmt->execute(['hotelId' => $hotel->getId()]);
-    $reviews = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-    // Sur les lignes, ne garde que la note de l'avis
-    $reviews = array_map(function ($review) {
-      return intval($review['meta_value']);
-    }, $reviews);
-
-    $output = [
-      'rating' => round(array_sum($reviews) / count($reviews)),
-      'count' => count($reviews),
-    ];
-
-    return $output;
-  }
-
-
-  /**
-   * Récupère les données liées à la chambre la moins chère des hotels
-   *
-   * @param HotelEntity $hotel
-   * @param array{
-   *   search: string | null,
-   *   lat: string | null,
-   *   lng: string | null,
-   *   price: array{min:float | null, max: float | null},
-   *   surface: array{min:int | null, max: int | null},
-   *   rooms: int | null,
-   *   bathRooms: int | null,
-   *   types: string[]
-   * }                  $args Une liste de paramètres pour filtrer les résultats
-   *
-   * @throws FilterException
-   * @return RoomEntity
-   */
-  protected function getCheapestRoom(HotelEntity $hotel, array $args = []): RoomEntity
-  {
-    // On charge toutes les chambres de l'hôtel
-    $stmt = $this->getDB()->prepare("
-      SELECT
-        p.ID,
-        MAX( CASE WHEN pm.meta_key = 'price' THEN pm.meta_value END ) AS price,
-        MAX( CASE WHEN pm.meta_key = 'surface' THEN pm.meta_value END ) AS surface,
-        MAX( CASE WHEN pm.meta_key = 'bedRoomsCount' THEN pm.meta_value END ) AS bed_rooms,
-        MAX( CASE WHEN pm.meta_key = 'bathRoomsCount' THEN pm.meta_value END ) AS bath_rooms,
-        MAX( CASE WHEN pm.meta_key = 'type' THEN pm.meta_value END ) AS type
-      FROM wp_posts p
-      JOIN wp_postmeta pm ON pm.post_id = p.ID
-      WHERE p.post_author = :hotelId
-        AND p.post_type = 'room'
-      GROUP BY p.ID
-    ");
-    $stmt->execute(['hotelId' => $hotel->getId()]);
-    $rooms = $stmt->fetchAll(PDO::FETCH_ASSOC); // tableau de données brutes, pas de requête supplémentaire
-
-    // On exclut les chambres qui ne correspondent pas aux critères
-    $filteredRooms = [];
-
-    foreach ($rooms as $room) {
-      if (isset($args['surface']['min']) && $room['surface'] < $args['surface']['min'])
-        continue;
-
-      if (isset($args['surface']['max']) && $room['surface'] > $args['surface']['max'])
-        continue;
-
-      if (isset($args['price']['min']) && intval($room['price']) < $args['price']['min'])
-        continue;
-
-      if (isset($args['price']['max']) && intval($room['price']) > $args['price']['max'])
-        continue;
-
-      if (isset($args['rooms']) && $room['bed_rooms'] < $args['rooms'])
-        continue;
-
-      if (isset($args['bathRooms']) && $room['bath_rooms'] < $args['bathRooms'])
-        continue;
-
-      if (isset($args['types']) && ! empty($args['types']) && ! in_array($room['type'], $args['types']))
-        continue;
-
-      $filteredRooms[] = $room;
-    }
-
-    // Si aucune chambre ne correspond aux critères, alors on déclenche une exception pour retirer l'hôtel des résultats finaux de la méthode list().
-    if (count($filteredRooms) < 1)
-      throw new FilterException("Aucune chambre ne correspond aux critères");
-
-
-    // Trouve le prix le plus bas dans les résultats de recherche
-    $cheapestRoom = null;
-    foreach ($filteredRooms as $room) :
-      if (! isset($cheapestRoom)) {
-        $cheapestRoom = $room;
-        continue;
-      }
-
-      if (intval($room['price']) < intval($cheapestRoom['price']))
-        $cheapestRoom = $room;
-    endforeach;
-
-    return $cheapestRoom;
-  }
-
-
-  /**
-   * Calcule la distance entre deux coordonnées GPS
-   *
-   * @param $latitudeFrom
-   * @param $longitudeFrom
-   * @param $latitudeTo
-   * @param $longitudeTo
-   *
-   * @return float|int
-   */
   protected function computeDistance($latitudeFrom, $longitudeFrom, $latitudeTo, $longitudeTo): float|int
   {
-    return (111.111 * rad2deg(acos(min(1.0, cos(deg2rad($latitudeTo))
-      * cos(deg2rad($latitudeFrom))
-      * cos(deg2rad($longitudeTo - $longitudeFrom))
-      + sin(deg2rad($latitudeTo))
-      * sin(deg2rad($latitudeFrom))))));
+    return 111.111 * rad2deg(
+      acos(
+        min(
+          1.0,
+          cos(deg2rad($latitudeTo))
+          * cos(deg2rad($latitudeFrom))
+          * cos(deg2rad($longitudeTo - $longitudeFrom))
+          + sin(deg2rad($latitudeTo))
+          * sin(deg2rad($latitudeFrom))
+        )
+      )
+    );
   }
 
-
-  /**
-   * Construit une ShopEntity depuis un tableau associatif de données
-   *
-   * @throws Exception
-   */
-  protected function convertEntityFromArray(array $data, array $args): HotelEntity
+  protected function getMetasByHotelIds(array $hotelIds): array
   {
-    $hotel = (new HotelEntity())
-      ->setId($data['ID'])
-      ->setName($data['display_name']);
+    $keys = [
+      'address_1',
+      'address_2',
+      'address_city',
+      'address_zip',
+      'address_country',
+      'geo_lat',
+      'geo_lng',
+      'coverImage',
+      'phone',
+    ];
 
-    // Charge les données meta de l'hôtel
-    $metasData = $this->getMetas($hotel);
-    $hotel->setAddress($metasData['address']);
-    $hotel->setGeoLat($metasData['geo_lat']);
-    $hotel->setGeoLng($metasData['geo_lng']);
-    $hotel->setImageUrl($metasData['coverImage']);
-    $hotel->setPhone($metasData['phone']);
+    $hotelPlaceholders = implode(',', array_fill(0, count($hotelIds), '?'));
+    $keyPlaceholders = implode(',', array_fill(0, count($keys), '?'));
 
-    // Définit la note moyenne et le nombre d'avis de l'hôtel
-    $reviewsData = $this->getReviews($hotel);
-    $hotel->setRating($reviewsData['rating']);
-    $hotel->setRatingCount($reviewsData['count']);
+    $stmt = $this->getDB()->prepare("
+      SELECT user_id, meta_key, meta_value
+      FROM wp_usermeta
+      WHERE user_id IN ($hotelPlaceholders)
+      AND meta_key IN ($keyPlaceholders)
+    ");
 
-    // Charge la chambre la moins chère de l'hôtel
-    $cheapestRoom = $this->getCheapestRoom($hotel, $args);
-    $hotel->setCheapestRoom($cheapestRoom);
+    $stmt->execute([
+      ...$hotelIds,
+      ...$keys,
+    ]);
 
-    // Verification de la distance
-    if (isset($args['lat']) && isset($args['lng']) && isset($args['distance'])) {
-      $hotel->setDistance($this->computeDistance(
-        floatval($args['lat']),
-        floatval($args['lng']),
-        floatval($hotel->getGeoLat()),
-        floatval($hotel->getGeoLng())
-      ));
+    $rawMetas = [];
 
-      if ($hotel->getDistance() > $args['distance'])
-        throw new FilterException("L'hôtel est en dehors du rayon de recherche");
+    foreach ($stmt->fetchAll() as $row) {
+      $hotelId = (int) $row['user_id'];
+      $rawMetas[$hotelId][$row['meta_key']] = $row['meta_value'];
     }
 
-    return $hotel;
+    $result = [];
+
+    foreach ($hotelIds as $hotelId) {
+      $metas = array_merge(
+        array_fill_keys($keys, null),
+        $rawMetas[$hotelId] ?? []
+      );
+
+      $result[$hotelId] = [
+        'address' => [
+          'address_1' => $metas['address_1'],
+          'address_2' => $metas['address_2'],
+          'address_city' => $metas['address_city'],
+          'address_zip' => $metas['address_zip'],
+          'address_country' => $metas['address_country'],
+        ],
+        'geo_lat' => $metas['geo_lat'],
+        'geo_lng' => $metas['geo_lng'],
+        'coverImage' => $metas['coverImage'],
+        'phone' => $metas['phone'],
+      ];
+    }
+
+    return $result;
   }
 
+  protected function getReviewsByHotelIds(array $hotelIds): array
+  {
+    $placeholders = implode(',', array_fill(0, count($hotelIds), '?'));
+
+    $stmt = $this->getDB()->prepare("
+      SELECT 
+        wp_posts.post_author AS hotel_id,
+        ROUND(AVG(CAST(wp_postmeta.meta_value AS UNSIGNED))) AS rating,
+        COUNT(*) AS count
+      FROM wp_posts
+      INNER JOIN wp_postmeta
+        ON wp_postmeta.post_id = wp_posts.ID
+        AND wp_postmeta.meta_key = 'rating'
+      WHERE wp_posts.post_type = 'review'
+      AND wp_posts.post_author IN ($placeholders)
+      GROUP BY wp_posts.post_author
+    ");
+
+    $stmt->execute($hotelIds);
+
+    $result = [];
+
+    foreach ($stmt->fetchAll() as $row) {
+      $result[(int) $row['hotel_id']] = [
+        'rating' => (int) $row['rating'],
+        'count' => (int) $row['count'],
+      ];
+    }
+
+    return $result;
+  }
+
+  protected function getCheapestRoomIdsByHotelIds(array $hotelIds, array $args = []): array
+  {
+    $hotelPlaceholders = implode(',', array_fill(0, count($hotelIds), '?'));
+
+    $sql = "
+      SELECT 
+        wp_posts.post_author AS hotel_id,
+        wp_posts.ID AS room_id,
+        CAST(price_meta.meta_value AS UNSIGNED) AS price
+      FROM wp_posts
+      INNER JOIN wp_postmeta price_meta
+        ON price_meta.post_id = wp_posts.ID
+        AND price_meta.meta_key = 'price'
+      LEFT JOIN wp_postmeta surface_meta
+        ON surface_meta.post_id = wp_posts.ID
+        AND surface_meta.meta_key = 'surface'
+      LEFT JOIN wp_postmeta rooms_meta
+        ON rooms_meta.post_id = wp_posts.ID
+        AND rooms_meta.meta_key = 'rooms'
+      LEFT JOIN wp_postmeta bathrooms_meta
+        ON bathrooms_meta.post_id = wp_posts.ID
+        AND bathrooms_meta.meta_key = 'bathRooms'
+      LEFT JOIN wp_postmeta type_meta
+        ON type_meta.post_id = wp_posts.ID
+        AND type_meta.meta_key = 'type'
+      WHERE wp_posts.post_type = 'room'
+      AND wp_posts.post_author IN ($hotelPlaceholders)
+    ";
+
+    $params = $hotelIds;
+
+    if (isset($args['surface']['min'])) {
+      $sql .= " AND CAST(surface_meta.meta_value AS UNSIGNED) >= ?";
+      $params[] = $args['surface']['min'];
+    }
+
+    if (isset($args['surface']['max'])) {
+      $sql .= " AND CAST(surface_meta.meta_value AS UNSIGNED) <= ?";
+      $params[] = $args['surface']['max'];
+    }
+
+    if (isset($args['price']['min'])) {
+      $sql .= " AND CAST(price_meta.meta_value AS UNSIGNED) >= ?";
+      $params[] = $args['price']['min'];
+    }
+
+    if (isset($args['price']['max'])) {
+      $sql .= " AND CAST(price_meta.meta_value AS UNSIGNED) <= ?";
+      $params[] = $args['price']['max'];
+    }
+
+    if (isset($args['rooms'])) {
+      $sql .= " AND CAST(rooms_meta.meta_value AS UNSIGNED) >= ?";
+      $params[] = $args['rooms'];
+    }
+
+    if (isset($args['bathRooms'])) {
+      $sql .= " AND CAST(bathrooms_meta.meta_value AS UNSIGNED) >= ?";
+      $params[] = $args['bathRooms'];
+    }
+
+    if (isset($args['types']) && !empty($args['types'])) {
+      $typePlaceholders = implode(',', array_fill(0, count($args['types']), '?'));
+      $sql .= " AND type_meta.meta_value IN ($typePlaceholders)";
+      $params = [...$params, ...$args['types']];
+    }
+
+    $sql .= " ORDER BY wp_posts.post_author ASC, price ASC";
+
+    $stmt = $this->getDB()->prepare($sql);
+    $stmt->execute($params);
+
+    $result = [];
+
+    foreach ($stmt->fetchAll() as $row) {
+      $hotelId = (int) $row['hotel_id'];
+
+      if (!isset($result[$hotelId])) {
+        $result[$hotelId] = (int) $row['room_id'];
+      }
+    }
+
+    return $result;
+  }
 
   /**
-   * Retourne une liste de boutiques qui peuvent être filtrées en fonction des paramètres donnés à $args
-   *
-   * @param array{
-   *   search: string | null,
-   *   lat: string | null,
-   *   lng: string | null,
-   *   price: array{min:float | null, max: float | null},
-   *   surface: array{min:int | null, max: int | null},
-   *   bedrooms: int | null,
-   *   bathrooms: int | null,
-   *   types: string[]
-   * } $args Une liste de paramètres pour filtrer les résultats
-   *
    * @throws Exception
-   * @return HotelEntity[] La liste des boutiques qui correspondent aux paramètres donnés à args
+   * @return HotelEntity[]
    */
   public function list(array $args = []): array
   {
-    $db = $this->getDB();
-    $stmt = $db->prepare("SELECT * FROM wp_users");
-    $stmt->execute();
+    $search = $args['search'] ?? null;
 
-    $results = [];
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-      try {
-        $results[] = $this->convertEntityFromArray($row, $args);
-      } catch (FilterException) {
-        // Des FilterException peuvent être déclenchées pour exclure certains hotels des résultats
-      }
+    $sql = "
+      SELECT ID, display_name
+      FROM wp_users
+    ";
+
+    $params = [];
+
+    if (!empty($search)) {
+      $sql .= " WHERE display_name LIKE ?";
+      $params[] = '%' . $search . '%';
     }
 
+    $stmt = $this->getDB()->prepare($sql);
+    $stmt->execute($params);
+
+    $hotelsData = $stmt->fetchAll();
+
+    if (empty($hotelsData)) {
+      return [];
+    }
+
+    $hotelIds = array_map(
+      fn(array $row) => (int) $row['ID'],
+      $hotelsData
+    );
+
+    $metasByHotelId = $this->getMetasByHotelIds($hotelIds);
+    $reviewsByHotelId = $this->getReviewsByHotelIds($hotelIds);
+    $cheapestRoomIdsByHotelId = $this->getCheapestRoomIdsByHotelIds($hotelIds, $args);
+
+    $results = [];
+
+    foreach ($hotelsData as $row) {
+      $hotelId = (int) $row['ID'];
+
+      if (!isset($cheapestRoomIdsByHotelId[$hotelId])) {
+        continue;
+      }
+
+      $metas = $metasByHotelId[$hotelId] ?? null;
+
+      if ($metas === null) {
+        continue;
+      }
+
+      $hotel = (new HotelEntity())
+        ->setId($hotelId)
+        ->setName($row['display_name'])
+        ->setAddress($metas['address'])
+        ->setGeoLat($metas['geo_lat'])
+        ->setGeoLng($metas['geo_lng'])
+        ->setImageUrl($metas['coverImage'])
+        ->setPhone($metas['phone']);
+
+      $reviews = $reviewsByHotelId[$hotelId] ?? [
+        'rating' => 0,
+        'count' => 0,
+      ];
+
+      $hotel->setRating($reviews['rating']);
+      $hotel->setRatingCount($reviews['count']);
+
+      if (isset($args['lat'], $args['lng'], $args['distance'])) {
+        $hotel->setDistance(
+          $this->computeDistance(
+            floatval($args['lat']),
+            floatval($args['lng']),
+            floatval($hotel->getGeoLat()),
+            floatval($hotel->getGeoLng())
+          )
+        );
+
+        if ($hotel->getDistance() > $args['distance']) {
+          continue;
+        }
+      }
+
+      $hotel->setCheapestRoom(
+        $this->getRoomService()->get($cheapestRoomIdsByHotelId[$hotelId])
+      );
+
+      $results[] = $hotel;
+    }
 
     return $results;
   }

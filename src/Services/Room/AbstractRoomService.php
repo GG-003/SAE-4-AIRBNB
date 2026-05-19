@@ -2,6 +2,8 @@
 
 namespace App\Services\Room;
 
+use App\Entities\RoomEntity;
+
 abstract class AbstractRoomService {
   
   /**
@@ -12,5 +14,5 @@ abstract class AbstractRoomService {
    * }
    */
   abstract public function getCountByType() : array;
-  
+  abstract public function get(int $id): RoomEntity;
 }
