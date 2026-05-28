@@ -44,10 +44,10 @@ class UnoptimizedHotelService extends AbstractHotelService
         min(
           1.0,
           cos(deg2rad($latitudeTo))
-          * cos(deg2rad($latitudeFrom))
-          * cos(deg2rad($longitudeTo - $longitudeFrom))
-          + sin(deg2rad($latitudeTo))
-          * sin(deg2rad($latitudeFrom))
+            * cos(deg2rad($latitudeFrom))
+            * cos(deg2rad($longitudeTo - $longitudeFrom))
+            + sin(deg2rad($latitudeTo))
+            * sin(deg2rad($latitudeFrom))
         )
       )
     );

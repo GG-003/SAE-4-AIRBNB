@@ -100,4 +100,47 @@ GROUP BY
 
     return $output;
   }
+
+  public function getByIds(array $roomIds): array
+  {
+    if (empty($roomIds)) return [];
+
+    $placeholders = implode(',', array_fill(0, count($roomIds), '?'));
+    $stmt = $this->getDB()->prepare("
+        SELECT ID, post_title FROM wp_posts
+        WHERE ID IN ($placeholders)
+        AND post_type = 'room'
+    ");
+    $stmt->execute($roomIds);
+
+    $rooms = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+      $rooms[(int)$row['ID']] = (new RoomEntity())
+        ->setId((int)$row['ID'])
+        ->setTitle($row['post_title']);
+    }
+
+    $stmt = $this->getDB()->prepare("
+        SELECT post_id, meta_key, meta_value FROM wp_postmeta
+        WHERE post_id IN ($placeholders)
+    ");
+    $stmt->execute($roomIds);
+
+    $metasByRoom = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+      $metasByRoom[(int)$row['post_id']][$row['meta_key']] = $row['meta_value'];
+    }
+
+    foreach ($rooms as $id => $room) {
+      $metas = $metasByRoom[$id] ?? [];
+      $room->setBathRoomsCount($metas['bathrooms_count'] ?? null);
+      $room->setBedRoomsCount($metas['bedrooms_count'] ?? null);
+      $room->setCoverImageUrl($metas['coverImage'] ?? null);
+      $room->setSurface($metas['surface'] ?? null);
+      $room->setType($metas['type'] ?? null);
+      $room->setPrice($metas['price'] ?? null);
+    }
+
+    return $rooms; // room_id => RoomEntity
+  }
 }
