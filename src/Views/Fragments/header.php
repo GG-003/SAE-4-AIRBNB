@@ -10,30 +10,7 @@
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title><?= $title ?? "Default " ?></title>
   
-  <!-- Tailwind -->
-  <script src="/assets/scripts/tailwindcss.js"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            "sky": {
-              "50": "#E8F0FD",
-              "100": "#CCDEFA",
-              "200": "#9EC1F5",
-              "300": "#6BA0EF",
-              "400": "#3D83EA",
-              "500": "#1766D9",
-              "600": "#1351AF",
-              "700": "#0E3C81",
-              "800": "#092958",
-              "900": "#041329"
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <link rel="stylesheet" href="/assets/styles/tailwind.css">
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -41,29 +18,18 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@100;200;300;400;500;600;700;800&display=swap" rel="stylesheet">
   
   <!-- Icons -->
-  <link rel="stylesheet" href="/assets/styles/iconoir.css" />
-  <link rel="stylesheet" href="/assets/styles/phosphor-icons.css" />
+  <!-- <link rel="stylesheet" href="/assets/styles/iconoir.css" />
+  <link rel="stylesheet" href="/assets/styles/phosphor-icons.css" /> -->
   
   <!-- Leaflet -->
   <link rel="stylesheet" href="/assets/styles/leaflet.css" />
   <script src="/assets/scripts/leaflet.js"></script>
   
   <!-- Lodash -->
-  <script src="/assets/scripts/lodash.js"></script>
+  <!-- <script src="/assets/scripts/lodash.js"></script> -->
   
   <!-- Assets -->
   <link rel="stylesheet" href="/assets/styles/main.css" />
-  <style type="text/tailwindcss">
-    @layer utilities {
-      .btn {
-        @apply rounded-xl px-4 py-3 bg-white hover:bg-slate-100 text-sky-500 text-lg transition-colors duration-300;
-      }
-      
-      .btn.btn-primary {
-        @apply rounded-xl px-4 py-3 bg-sky-500 hover:bg-sky-400 text-white text-lg;
-      }
-    }
-  </style>
   <script src="/assets/scripts/map.js" defer></script>
 </head>
 <body style="font-family: 'Barlow', sans-serif">

@@ -116,16 +116,16 @@ echo get_header( [ "title" => "Liste des hôtels" ] );
         
         <!-- Geolocation -->
         <button type="button" id="map-geoloc" class="rounded-xl btn flex items-center shadow-2xl shadow-slate-400 text-xl h-[3.25rem]">
-          <i class="ph-crosshair-fill"></i>
+          📍
         </button>
         
         <!-- Map Zoom -->
         <div class="rounded-xl py-3 bg-white text-slate-400 flex text-2xl shadow-2xl shadow-slate-400">
           <button id="map-zoom-minus" type="button" class="px-4 flex items-center border-r-2 border-slate-100 md:hover:text-sky-500 transition-colors">
-            <i class="ph-minus text-2xl"></i>
+            +
           </button>
           <button id="map-zoom-plus" type="button" class="px-4 flex items-center md:hover:text-sky-500 transition-colors">
-            <i class="ph-plus text-2xl"></i>
+            -
           </button>
         </div>
       </div>

@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .btn {
+    @apply rounded-xl px-4 py-3 bg-white hover:bg-slate-100 text-sky-500 text-lg transition-colors duration-300;
+  }
+
+  .btn.btn-primary {
+    @apply bg-sky-500 hover:bg-sky-400 text-white;
+  }
+}
