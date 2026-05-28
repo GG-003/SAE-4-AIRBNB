@@ -70,8 +70,7 @@ echo get_header( [ "title" => "Liste des hôtels" ] );
       
       <!-- Search input-->
       <div class="rounded-xl px-6 bg-white absolute inset-x-10 top-10 z-20 shadow-2xl shadow-slate-400 flex flex-row items-center">
-        <i class="ph-magnifying-glass  text-lg text-slate-400"></i>
-        
+        🔍        
         <label for="map-search" class="sr-only">Recherche</label>
         
         <input
